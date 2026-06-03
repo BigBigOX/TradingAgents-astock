@@ -281,3 +281,29 @@ export default function ReportSlideshow({ ticker, tickerName, tradeDate, signal,
   };
   const navigate = (dir: number) => setCurrent(p => Math.max(0, Math.min(TOTAL - 1, p + dir)));
 
+
+  if (!chartLoaded && typeof window !== 'undefined') {
+    return (
+      <div className="rounded-2xl border border-[#2a2a2a] bg-[#0f0f0f] p-12 text-center">
+        <div className="inline-flex items-center gap-2 text-sm text-[#555]">
+          <span className="w-2 h-2 bg-[#ff5a1f] rounded-full animate-pulse" />
+          Loading chart library...
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative rounded-2xl border border-[#2a2a2a] bg-[#0f0f0f] overflow-hidden select-none focus:outline-none"
+      tabIndex={0}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
+      <div className="text-center p-8 text-[#888] text-sm">
+        Report Slideshow
+      </div>
+    </div>
+  );
+}
