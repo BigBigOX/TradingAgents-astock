@@ -47,7 +47,7 @@ export function Settings() {
         setConfig(prev => ({
           ...prev,
           ...data,
-          apiKey: data.apiKey === '__SET__' ? '' : data.apiKey,
+          apiKey: data.apiKey === '__SET__' ? MASKED_KEY : data.apiKey,
         }))
       })
       .catch(() => {})
@@ -66,12 +66,18 @@ export function Settings() {
   }
 
   // 保存配置
+  const MASKED_KEY = '\u25CF\u25CF\u25CF\u25CF\u25CF\u25CF\u25CF\u25CF';
+
   const handleSave = async () => {
     try {
+      const body = { ...config };
+      if (body.apiKey === MASKED_KEY) {
+        body.apiKey = '__SET__';
+      }
       const resp = await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
+        body: JSON.stringify(body),
       })
       if (resp.ok) {
         setSaved(true)

@@ -1,11 +1,12 @@
 /**
- * 配置管理 + 持久化
+ * 配置管理 + 持久化（AES 加密）
  * 存储位置: ~/.tradingagents/config.json
  */
 
 import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
+import * as crypto from 'crypto'
 
 /** 持久化配置结构 */
 export interface AppConfig {
@@ -33,8 +34,7 @@ export const DEFAULT_CONFIG: AppConfig = {
 
 /** 配置文件路径 */
 function getConfigPath(): string {
-  const home = os.homedir()
-  return path.join(home, '.tradingagents', 'config.json')
+  return path.join(os.homedir(), '.tradingagents', 'config.json')
 }
 
 /** 确保配置目录存在 */
@@ -45,13 +45,69 @@ function ensureConfigDir(): void {
   }
 }
 
-/** 读取配置（服务端使用） */
+// ---- AES-256-GCM 加密工具 ----
+
+const ALGORITHM = 'aes-256-gcm'
+const KEY_LENGTH = 32
+const IV_LENGTH = 16
+const TAG_LENGTH = 16
+
+/** 获取机器级稳定密钥（基于主机名 + 机器 ID，不依赖外部文件） */
+function getMachineKey(): Buffer {
+  const hostname = os.hostname()
+  const platform = os.platform()
+  const raw = 'tradingagents-' + hostname + '-' + platform
+  return crypto.createHash('sha256').update(raw).digest()
+}
+
+/** 加密明文 */
+function encrypt(plaintext: string): string {
+  if (!plaintext) return ''
+  const key = getMachineKey()
+  const iv = crypto.randomBytes(IV_LENGTH)
+  const cipher = crypto.createCipheriv(ALGORITHM, key, iv)
+  let encrypted = cipher.update(plaintext, 'utf8', 'hex')
+  encrypted += cipher.final('hex')
+  const tag = cipher.getAuthTag().toString('hex')
+  // 格式: iv:tag:ciphertext
+  return iv.toString('hex') + ':' + tag + ':' + encrypted
+}
+
+/** 解密密文 */
+function decrypt(ciphertext: string): string {
+  if (!ciphertext) return ''
+  try {
+    const parts = ciphertext.split(':')
+    if (parts.length !== 3) return ''
+    const iv = Buffer.from(parts[0], 'hex')
+    const tag = Buffer.from(parts[1], 'hex')
+    const encrypted = parts[2]
+    const key = getMachineKey()
+    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv)
+    decipher.setAuthTag(tag)
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8')
+    decrypted += decipher.final('utf8')
+    return decrypted
+  } catch {
+    return ''
+  }
+}
+
+// ---- 配置读写 ----
+
+/** 读取配置（自动解密 apiKey） */
 export function loadConfig(): AppConfig {
   const configPath = getConfigPath()
   try {
     if (fs.existsSync(configPath)) {
       const raw = fs.readFileSync(configPath, 'utf-8')
-      return { ...DEFAULT_CONFIG, ...JSON.parse(raw) }
+      const parsed = JSON.parse(raw)
+      // 解密 apiKey
+      if (parsed.apiKey) {
+        const decrypted = decrypt(parsed.apiKey)
+        if (decrypted) parsed.apiKey = decrypted
+      }
+      return { ...DEFAULT_CONFIG, ...parsed }
     }
   } catch {
     // 读取失败时返回默认
@@ -59,11 +115,16 @@ export function loadConfig(): AppConfig {
   return { ...DEFAULT_CONFIG }
 }
 
-/** 保存配置（服务端使用） */
+/** 保存配置（自动加密 apiKey） */
 export function saveConfig(config: AppConfig): void {
   ensureConfigDir()
   const configPath = getConfigPath()
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
+  const toSave = { ...config }
+  // 加密 apiKey
+  if (toSave.apiKey) {
+    toSave.apiKey = encrypt(toSave.apiKey)
+  }
+  fs.writeFileSync(configPath, JSON.stringify(toSave, null, 2), 'utf-8')
 }
 
 /** Provider 对应默认 API 地址 */
