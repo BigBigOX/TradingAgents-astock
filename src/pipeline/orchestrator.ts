@@ -112,6 +112,12 @@ async function runFreshPipeline(
     onStage?.('analyst', { type: analystType, status: 'running' })
     const update = await analystMap[analystType](state)
     state = { ...state, ...update }
+    // 推送 agent 分析结果
+    const reportKey = analystType + 'Report'
+    const reportContent = (update as any)[reportKey]
+    if (reportContent) {
+      onStage?.('agent_report', { agent: analystType, content: reportContent })
+    }
     onStage?.('analyst', { type: analystType, status: 'done' })
   }
 
@@ -125,6 +131,9 @@ async function runFreshPipeline(
   onStage?.('quality_gate', { status: 'running' })
   const qgUpdate = await qualityGateNode(state, config.apiKey, config.baseUrl, config.quickModel)
   state = { ...state, ...qgUpdate }
+  if (qgUpdate.dataQualitySummary) {
+    onStage?.('agent_report', { agent: 'quality_gate', content: qgUpdate.dataQualitySummary })
+  }
   onStage?.('quality_gate', { status: 'done' })
 
   if (config.enableCheckpoint !== false) {
@@ -138,10 +147,16 @@ async function runFreshPipeline(
   while (debateCount < maxRounds * 2) {
     const bullUpdate = await bullResearcherNode(state, config.apiKey, config.baseUrl, config.deepModel)
     state = { ...state, investmentDebateState: bullUpdate.investmentDebateState! }
+    if (bullUpdate.investmentDebateState?.currentResponse) {
+      onStage?.('debate_message', { side: 'bull', round: Math.ceil(debateCount/2)+1, content: bullUpdate.investmentDebateState.currentResponse })
+    }
     debateCount++
 
     const bearUpdate = await bearResearcherNode(state, config.apiKey, config.baseUrl, config.deepModel)
     state = { ...state, investmentDebateState: bearUpdate.investmentDebateState! }
+    if (bearUpdate.investmentDebateState?.currentResponse) {
+      onStage?.('debate_message', { side: 'bear', round: Math.ceil(debateCount/2)+1, content: bearUpdate.investmentDebateState.currentResponse })
+    }
     debateCount++
   }
   onStage?.('debate', { status: 'done' })
@@ -154,6 +169,9 @@ async function runFreshPipeline(
   onStage?.('research_manager', { status: 'running' })
   const rmUpdate = await researchManagerNode(state, config.apiKey, config.baseUrl, config.deepModel)
   state = { ...state, ...rmUpdate }
+  if (rmUpdate.investmentPlan) {
+    onStage?.('agent_report', { agent: 'research_manager', content: rmUpdate.investmentPlan })
+  }
   onStage?.('research_manager', { status: 'done' })
 
   if (config.enableCheckpoint !== false) {
@@ -164,6 +182,9 @@ async function runFreshPipeline(
   onStage?.('trader', { status: 'running' })
   const traderUpdate = await traderNode(state, config.apiKey, config.baseUrl, config.quickModel)
   state = { ...state, ...traderUpdate }
+  if (traderUpdate.traderInvestmentPlan) {
+    onStage?.('agent_report', { agent: 'trader', content: traderUpdate.traderInvestmentPlan })
+  }
   onStage?.('trader', { status: 'done' })
 
   if (config.enableCheckpoint !== false) {
@@ -176,14 +197,23 @@ async function runFreshPipeline(
   while (riskCount < maxRounds * 3) {
     const aggUpdate = await aggressiveDebatorNode(state, config.apiKey, config.baseUrl, config.quickModel)
     state = { ...state, riskDebateState: aggUpdate.riskDebateState! }
+    if (aggUpdate.riskDebateState?.currentAggressiveResponse) {
+      onStage?.('risk_message', { side: 'aggressive', round: riskCount+1, content: aggUpdate.riskDebateState.currentAggressiveResponse })
+    }
     riskCount++
 
     const conUpdate = await conservativeDebatorNode(state, config.apiKey, config.baseUrl, config.quickModel)
     state = { ...state, riskDebateState: conUpdate.riskDebateState! }
+    if (conUpdate.riskDebateState?.currentConservativeResponse) {
+      onStage?.('risk_message', { side: 'conservative', round: riskCount+1, content: conUpdate.riskDebateState.currentConservativeResponse })
+    }
     riskCount++
 
     const neuUpdate = await neutralDebatorNode(state, config.apiKey, config.baseUrl, config.quickModel)
     state = { ...state, riskDebateState: neuUpdate.riskDebateState! }
+    if (neuUpdate.riskDebateState?.currentNeutralResponse) {
+      onStage?.('risk_message', { side: 'neutral', round: riskCount+1, content: neuUpdate.riskDebateState.currentNeutralResponse })
+    }
     riskCount++
   }
   onStage?.('risk', { status: 'done' })
@@ -196,6 +226,9 @@ async function runFreshPipeline(
   onStage?.('pm', { status: 'running' })
   const pmUpdate = await portfolioManagerNode(state, config.apiKey, config.baseUrl, config.deepModel)
   state = { ...state, ...pmUpdate }
+  if (pmUpdate.finalTradeDecision) {
+    onStage?.('agent_report', { agent: 'pm', content: pmUpdate.finalTradeDecision })
+  }
   onStage?.('pm', { status: 'done' })
 
   const signal = parseRating(state.finalTradeDecision)
