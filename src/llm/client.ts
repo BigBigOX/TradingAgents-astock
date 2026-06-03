@@ -16,6 +16,8 @@ export interface ToolCallResult {
 }
 
 export interface ChatMessage {
+  /** 工具调用结果（仅 assistant 角色使用） */
+  toolCalls?: ToolCallResult[]
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
   toolCallId?: string
@@ -44,10 +46,23 @@ export interface LLMClient {
   invoke(messages: ChatMessage[], options?: InvokeOptions): Promise<LLMResponse>
 }
 
+/** OpenAI-compatible 格式的消息体 */
+interface OpenAIMessage {
+  role: string
+  content: string
+  tool_call_id?: string
+  name?: string
+  tool_calls?: {
+    id: string
+    type: string
+    function: { name: string; arguments: string }
+  }[]
+}
+
 /** OpenAI-compatible 格式的请求体 */
 interface OpenAIRequest {
   model: string
-  messages: { role: string; content: string }[]
+  messages: OpenAIMessage[]
   stream?: boolean
   tools?: any[]
   response_format?: { type: string; json_schema?: any }
@@ -73,7 +88,19 @@ export function isOpenAICompatible(provider: string): boolean {
   return ['openai', 'deepseek', 'qwen', 'glm', 'minimax', 'xai', 'ollama'].includes(provider)
 }
 
-/** 发起 LLM 调用 */  // <-- 中文注释
+/** 将 ChatMessage 转换为 OpenAI API 格式 */
+function toOpenAIMessage(m: ChatMessage): OpenAIMessage {
+  const base: OpenAIMessage = { role: m.role, content: m.content };
+  if (m.role === 'tool' && m.toolCallId) {
+    base.tool_call_id = m.toolCallId;
+  }
+  if (m.name) {
+    base.name = m.name;
+  }
+  return base;
+}
+
+/** 发起 LLM 调用 */
 export async function invokeLLM(
   model: string,
   messages: ChatMessage[],
@@ -81,12 +108,34 @@ export async function invokeLLM(
   baseUrl: string,
   options?: InvokeOptions,
 ): Promise<LLMResponse> {
-  const url = `${baseUrl}/chat/completions`
+  const url = baseUrl + '/chat/completions';
+
+  // 构建消息列表——完整保留 tool_call_id / name
+  const apiMessages: OpenAIMessage[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    const apiMsg = toOpenAIMessage(m);
+    // 如果这条消息有 toolCalls，嵌入到 API 格式中
+    if (m.role === 'assistant' && (m as any).toolCalls) {
+      const tcs = (m as any).toolCalls as ToolCallResult[];
+      if (tcs.length > 0) {
+        (apiMsg as any).tool_calls = tcs.map(tc => ({
+          id: tc.id,
+          type: 'function',
+          function: {
+            name: tc.name,
+            arguments: JSON.stringify(tc.args),
+          },
+        }));
+      }
+    }
+    apiMessages.push(apiMsg);
+  }
 
   const body: OpenAIRequest = {
     model,
-    messages: messages.map(m => ({ role: m.role, content: m.content })),
-  }
+    messages: apiMessages,
+  };
 
   if (options?.tools && options.tools.length > 0) {
     body.tools = options.tools.map(t => ({
@@ -96,7 +145,7 @@ export async function invokeLLM(
         description: t.description,
         parameters: t.parameters,
       },
-    }))
+    }));
   }
 
   if (options?.responseSchema) {
@@ -106,40 +155,40 @@ export async function invokeLLM(
         name: 'response',
         schema: options.responseSchema,
       },
-    }
+    };
   }
 
   const resp = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
+      'Authorization': 'Bearer ' + apiKey,
     },
     body: JSON.stringify(body),
-  })
+  });
 
   if (!resp.ok) {
-    const errText = await resp.text()
-    throw new Error(`LLM API 错误 (${resp.status}): ${errText}`)
+    const errText = await resp.text();
+    throw new Error('LLM API 错误 (' + resp.status + '): ' + errText);
   }
 
-  const data: OpenAIResponse = await resp.json()
-  const choice = data.choices?.[0]
-  if (!choice) throw new Error('LLM 返回空响应')
+  const data: OpenAIResponse = await resp.json();
+  const choice = data.choices?.[0];
+  if (!choice) throw new Error('LLM 返回空响应');
 
   const response: LLMResponse = {
     content: choice.message.content || '',
-  }
+  };
 
   if (choice.message.tool_calls) {
     response.toolCalls = choice.message.tool_calls.map(tc => ({
       id: tc.id,
       name: tc.function.name,
       args: JSON.parse(tc.function.arguments),
-    }))
+    }));
   }
 
-  return response
+  return response;
 }
 
 /** 调用 LLM 并解析结构化输出 */
@@ -152,10 +201,10 @@ export async function invokeStructured<T>(
 ): Promise<T> {
   const response = await invokeLLM(model, messages, apiKey, baseUrl, {
     responseSchema: schema,
-  })
+  });
   try {
-    return JSON.parse(response.content) as T
+    return JSON.parse(response.content) as T;
   } catch {
-    throw new Error(`LLM 结构化输出解析失败: ${response.content.slice(0, 200)}`)
+    throw new Error('LLM 结构化输出解析失败: ' + response.content.slice(0, 200));
   }
 }

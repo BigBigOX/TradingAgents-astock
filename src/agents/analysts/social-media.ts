@@ -46,7 +46,7 @@ export async function socialMediaAnalystNode(
   while (maxRounds > 0) {
     maxRounds--
     const resp = await invokeLLM(quickModel, messages, apiKey, baseUrl, { tools: TOOLS })
-    messages.push({ role: 'assistant', content: resp.content })
+    messages.push({ role: 'assistant', content: resp.content, toolCalls: resp.toolCalls })
 
     if (resp.toolCalls && resp.toolCalls.length > 0) {
       for (const tc of resp.toolCalls) {

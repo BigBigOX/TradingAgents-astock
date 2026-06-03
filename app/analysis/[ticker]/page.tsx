@@ -7,7 +7,6 @@ interface Props { params: { ticker: string }; searchParams: { date?: string }; }
 interface StageInfo {
   label: string;
   status: 'pending' | 'running' | 'done' | 'error';
-  detail?: string;
 }
 
 const STAGES: { key: string; label: string }[] = [
@@ -34,7 +33,6 @@ export default function AnalysisPage({ params, searchParams }: Props) {
   const [report, setReport] = useState('');
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
-  const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const init: Record<string, StageInfo> = {};
@@ -71,24 +69,15 @@ export default function AnalysisPage({ params, searchParams }: Props) {
                 setStages(prev => {
                   const next = { ...prev };
                   if (d.stage && next[d.stage]) {
-                    next[d.stage] = { ...next[d.stage], status: 'running', detail: d.message || d.detail };
+                    next[d.stage] = { ...next[d.stage], status: 'running' };
                   }
                   return next;
                 });
                 break;
               }
               case 'complete': {
-                const s = d.signal || d.decision || '';
-                setSignal({ text: s, rating: d.rating, confidence: d.confidence });
-                Object.keys(stages).forEach(k => {
-                  setStages(prev => {
-                    const n = { ...prev };
-                    if (n[k] && (n[k].status === 'pending' || n[k].status === 'running')) {
-                      n[k] = { ...n[k], status: 'done' };
-                    }
-                    return n;
-                  });
-                });
+                const text = d.signal || d.decision || '';
+                setSignal({ text, rating: d.rating, confidence: d.confidence });
                 break;
               }
               case 'report': {
@@ -101,6 +90,15 @@ export default function AnalysisPage({ params, searchParams }: Props) {
               }
               case 'done': {
                 setDone(true);
+                setStages(prev => {
+                  const next = { ...prev };
+                  Object.keys(next).forEach(k => {
+                    if (next[k].status === 'pending' || next[k].status === 'running') {
+                      next[k] = { ...next[k], status: 'done' };
+                    }
+                  });
+                  return next;
+                });
                 break;
               }
             }
@@ -118,7 +116,7 @@ export default function AnalysisPage({ params, searchParams }: Props) {
       case 'done': return '\u2705';
       case 'running': return '\u23F3';
       case 'error': return '\u274C';
-      default: return '\u23FA';
+      default: return '\u2B1C';
     }
   };
 
@@ -133,33 +131,49 @@ export default function AnalysisPage({ params, searchParams }: Props) {
     }
   };
 
+  const ratingLabel = (rating?: string) => {
+    switch (rating) {
+      case 'Buy': return '买入';
+      case 'Overweight': return '增持';
+      case 'Hold': return '持有';
+      case 'Underweight': return '减持';
+      case 'Sell': return '卖出';
+      default: return rating || '';
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      {/* 顶部导航 */}
       <div className="flex items-center gap-3">
         <button onClick={() => router.push('/')} className="text-[#888] hover:text-[#f5f1eb] text-sm transition-colors">
-          \u2190 返回
+          &larr; 返回
         </button>
-        <h1 className="text-xl font-bold">{ticker} \u5206\u6790\u62a5\u544a</h1>
+        <h1 className="text-xl font-bold">{ticker} 分析报告</h1>
         <span className="text-sm text-[#555]">{date}</span>
       </div>
 
+      {/* 错误提示 */}
       {error && (
         <div className="p-4 bg-red-900/20 border border-red-800/50 rounded-lg">
-          <p className="text-red-400 text-sm">{error}</p>
+          <p className="text-red-400 text-sm whitespace-pre-wrap">{error}</p>
         </div>
       )}
 
+      {/* 进度条 */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
         {STAGES.map(s => {
           const info = stages[s.key];
           if (!info) return null;
           return (
-            <div key={s.key} className={'p-2 rounded-lg text-xs border transition-colors ' + (
-              info.status === 'done' ? 'bg-green-900/10 border-green-800/30 text-green-300' :
-              info.status === 'running' ? 'bg-blue-900/10 border-blue-800/30 text-blue-300' :
-              info.status === 'error' ? 'bg-red-900/10 border-red-800/30 text-red-300' :
-              'bg-[#161616] border-[#2a2a2a] text-[#555]'
-            )}>
+            <div key={s.key} className={
+              'p-2 rounded-lg text-xs border transition-colors ' + (
+                info.status === 'done' ? 'bg-green-900/10 border-green-800/30 text-green-300' :
+                info.status === 'running' ? 'bg-blue-900/10 border-blue-800/30 text-blue-300' :
+                info.status === 'error' ? 'bg-red-900/10 border-red-800/30 text-red-300' :
+                'bg-[#161616] border-[#2a2a2a] text-[#555]'
+              )
+            }>
               <span className="mr-1">{statusIcon(info.status)}</span>
               {info.label}
             </div>
@@ -167,41 +181,48 @@ export default function AnalysisPage({ params, searchParams }: Props) {
         })}
       </div>
 
+      {/* 信号结果 */}
       {signal && (
-        <div className="p-6 bg-[#161616] border border-[#2a2a2a] rounded-lg animate-fade-in">
+        <div className="p-6 bg-[#161616] border border-[#2a2a2a] rounded-lg">
           <div className="text-center">
-            <p className="text-xs text-[#888] mb-1">\u7efc\u5408\u8bc4\u7ea7</p>
+            <p className="text-xs text-[#888] mb-1">综合评级</p>
             <p className={'text-4xl font-extrabold ' + getRatingColor(signal.rating)}>
-              {signal.text || signal.rating}
+              {ratingLabel(signal.rating) || signal.text}
             </p>
             {signal.confidence !== undefined && (
               <p className="text-sm text-[#888] mt-2">
-                \u4fe1\u5fc3\u5ea6: {(signal.confidence * 100).toFixed(1)}%
+                置信度: {(signal.confidence * 100).toFixed(1)}%
               </p>
             )}
           </div>
         </div>
       )}
 
+      {/* 分析报告 */}
       {report && (
-        <div ref={reportRef} className="p-6 bg-[#161616] border border-[#2a2a2a] rounded-lg text-sm text-[#ccc] leading-relaxed whitespace-pre-wrap animate-fade-in">
-          <h2 className="text-lg font-bold text-[#f5f1eb] mb-4">\u5b8c\u6574\u5206\u6790\u62a5\u544a</h2>
+        <div className="p-6 bg-[#161616] border border-[#2a2a2a] rounded-lg text-sm text-[#ccc] leading-relaxed whitespace-pre-wrap">
+          <h2 className="text-lg font-bold text-[#f5f1eb] mb-4">完整分析报告</h2>
           {report.split('---').map((section, idx) => (
             <div key={idx} className="mb-6">{section}</div>
           ))}
         </div>
       )}
 
+      {/* 加载中 */}
       {!done && !error && !signal && (
         <div className="text-center py-8">
-          <p className="text-sm text-[#555] animate-pulse-text">AI \u5206\u6790\u8fdb\u884c\u4e2d\uff0c\u8bf7\u7a0d\u5019...</p>
+          <p className="text-sm text-[#555]">AI 分析进行中，请稍候...</p>
         </div>
       )}
 
+      {/* 完成 */}
       {done && (
         <div className="text-center py-4">
-          <button onClick={() => router.push('/')} className="px-6 py-2 bg-[#161616] border border-[#2a2a2a] rounded-lg text-sm text-[#888] hover:border-[#ff5a1f] transition-colors">
-            \u8fd4\u56de\u9996\u9875
+          <button
+            onClick={() => router.push('/')}
+            className="px-6 py-2 bg-[#161616] border border-[#2a2a2a] rounded-lg text-sm text-[#888] hover:border-[#ff5a1f] transition-colors"
+          >
+            返回首页
           </button>
         </div>
       )}
