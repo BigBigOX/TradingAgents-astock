@@ -5,7 +5,6 @@
 export interface LLMResponse {
   content: string
   toolCalls?: ToolCallResult[]
-  /** 结构化输出解析结果 */
   parsed?: unknown
 }
 
@@ -16,7 +15,6 @@ export interface ToolCallResult {
 }
 
 export interface ChatMessage {
-  /** 工具调用结果（仅 assistant 角色使用） */
   toolCalls?: ToolCallResult[]
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
@@ -26,13 +24,8 @@ export interface ChatMessage {
 
 export interface InvokeOptions {
   tools?: ToolDefinition[]
-  /** 结构化输出 schema */
-  responseSchema?: Record<string, unknown>
-  /** 流式回调 */
   onStream?: (chunk: string) => void
-  /** 自定义 API 地址 */
   baseUrl?: string
-  /** API Key */
   apiKey?: string
 }
 
@@ -46,7 +39,6 @@ export interface LLMClient {
   invoke(messages: ChatMessage[], options?: InvokeOptions): Promise<LLMResponse>
 }
 
-/** OpenAI-compatible 格式的消息体 */
 interface OpenAIMessage {
   role: string
   content: string
@@ -59,20 +51,18 @@ interface OpenAIMessage {
   }[]
 }
 
-/** OpenAI-compatible 格式的请求体 */
 interface OpenAIRequest {
   model: string
   messages: OpenAIMessage[]
   stream?: boolean
   tools?: any[]
-  response_format?: { type: string; json_schema?: any }
 }
 
-/** OpenAI-compatible 格式的响应体 */
 interface OpenAIResponse {
   choices: {
     message: {
       content: string | null
+      reasoning_content?: string
       tool_calls?: {
         id: string
         type: string
@@ -83,12 +73,15 @@ interface OpenAIResponse {
   }[]
 }
 
-/** 判断 provider 是否兼容 OpenAI 格式 */
+const DEEPSEEK_MODEL_MAP: Record<string, string> = {
+  'deepseek-v4-flash': 'deepseek-chat',
+  'deepseek-v4-pro': 'deepseek-chat',
+}
+
 export function isOpenAICompatible(provider: string): boolean {
   return ['openai', 'deepseek', 'qwen', 'glm', 'minimax', 'xai', 'ollama'].includes(provider)
 }
 
-/** 将 ChatMessage 转换为 OpenAI API 格式 */
 function toOpenAIMessage(m: ChatMessage): OpenAIMessage {
   const base: OpenAIMessage = { role: m.role, content: m.content };
   if (m.role === 'tool' && m.toolCallId) {
@@ -100,7 +93,6 @@ function toOpenAIMessage(m: ChatMessage): OpenAIMessage {
   return base;
 }
 
-/** 发起 LLM 调用 */
 export async function invokeLLM(
   model: string,
   messages: ChatMessage[],
@@ -108,54 +100,34 @@ export async function invokeLLM(
   baseUrl: string,
   options?: InvokeOptions,
 ): Promise<LLMResponse> {
+  // DeepSeek 模型名映射：v4-flash/pro 改为 deepseek-chat（非思考模式）
+  const actualModel = DEEPSEEK_MODEL_MAP[model] || model;
   const url = baseUrl + '/chat/completions';
 
-  // 构建消息列表——完整保留 tool_call_id / name
   const apiMessages: OpenAIMessage[] = [];
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
     const apiMsg = toOpenAIMessage(m);
-    // 如果这条消息有 toolCalls，嵌入到 API 格式中
     if (m.role === 'assistant' && (m as any).toolCalls) {
       const tcs = (m as any).toolCalls as ToolCallResult[];
       if (tcs.length > 0) {
         (apiMsg as any).tool_calls = tcs.map(tc => ({
           id: tc.id,
           type: 'function',
-          function: {
-            name: tc.name,
-            arguments: JSON.stringify(tc.args),
-          },
+          function: { name: tc.name, arguments: JSON.stringify(tc.args) },
         }));
       }
     }
     apiMessages.push(apiMsg);
   }
 
-  const body: OpenAIRequest = {
-    model,
-    messages: apiMessages,
-  };
+  const body: OpenAIRequest = { model: actualModel, messages: apiMessages };
 
   if (options?.tools && options.tools.length > 0) {
     body.tools = options.tools.map(t => ({
       type: 'function',
-      function: {
-        name: t.name,
-        description: t.description,
-        parameters: t.parameters,
-      },
+      function: { name: t.name, description: t.description, parameters: t.parameters },
     }));
-  }
-
-  if (options?.responseSchema) {
-    body.response_format = {
-      type: 'json_schema',
-      json_schema: {
-        name: 'response',
-        schema: options.responseSchema,
-      },
-    };
   }
 
   const controller = new AbortController();
@@ -180,10 +152,12 @@ export async function invokeLLM(
   const choice = data.choices?.[0];
   if (!choice) throw new Error('LLM 返回空响应');
 
-  const response: LLMResponse = {
-    content: choice.message.content || '',
-  };
+  let content = choice.message.content || '';
+  if (!content && (choice.message as any).reasoning_content) {
+    content = (choice.message as any).reasoning_content;
+  }
 
+  const response: LLMResponse = { content };
   if (choice.message.tool_calls) {
     response.toolCalls = choice.message.tool_calls.map(tc => ({
       id: tc.id,
@@ -191,24 +165,5 @@ export async function invokeLLM(
       args: JSON.parse(tc.function.arguments),
     }));
   }
-
   return response;
-}
-
-/** 调用 LLM 并解析结构化输出 */
-export async function invokeStructured<T>(
-  model: string,
-  messages: ChatMessage[],
-  schema: Record<string, unknown>,
-  apiKey: string,
-  baseUrl: string,
-): Promise<T> {
-  const response = await invokeLLM(model, messages, apiKey, baseUrl, {
-    responseSchema: schema,
-  });
-  try {
-    return JSON.parse(response.content) as T;
-  } catch {
-    throw new Error('LLM 结构化输出解析失败: ' + response.content.slice(0, 200));
-  }
 }

@@ -1,5 +1,15 @@
 /**
  * POST /api/analyze — 启动分析流程，通过 SSE 流式推送进度
+ *
+ * 事件类型：
+ *   stage          — 阶段状态更新（stage=market|social|... status=running|done）
+ *   agent_report   — Agent 分析报告（agent=xxx, content=...）
+ *   debate_message — 多空辩论消息（side=bull|bear, round=N, content=...）
+ *   risk_message   — 风险评估消息（side=aggressive|conservative|neutral, round=N, content=...）
+ *   complete       — 分析完成（signal, rating, decision）
+ *   report         — 完整报告文本
+ *   done           — 所有推送结束
+ *   error          — 错误信息
  */
 
 import type { NextApiRequest, NextApiResponse } from 'next'
@@ -13,41 +23,67 @@ export const config = {
   },
 }
 
+function sendEvent(res: NextApiResponse, type: string, data: any) {
+  const payload = JSON.stringify({ type, ...data });
+  res.write('data: ' + payload + '\n\n');
+  if (typeof (res as any).flush === 'function') (res as any).flush();
+}
+
+function createStageCallback(res: NextApiResponse) {
+  return (stage: string, data: any) => {
+    if (stage === 'analyst' && data.type) {
+      sendEvent(res, 'stage', { stage: data.type, status: data.status });
+      return;
+    }
+    if (stage === 'agent_report' || stage === 'debate_message' || stage === 'risk_message') {
+      sendEvent(res, stage, data);
+      return;
+    }
+    if (stage === 'complete') {
+      sendEvent(res, 'complete', data);
+      return;
+    }
+    if (data.status === 'running' || data.status === 'done') {
+      sendEvent(res, 'stage', { stage, status: data.status });
+    }
+  };
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: '仅支持 POST' })
+    res.status(405).json({ error: '仅支持 POST' });
+    return;
   }
 
-  const { ticker: rawTicker, date: tradeDate } = req.body
+  const { ticker: rawTicker, date: tradeDate } = req.body;
   if (!rawTicker || !tradeDate) {
-    return res.status(400).json({ error: '缺少 ticker 或 date 参数' })
+    res.status(400).json({ error: '缺少 ticker 或 date 参数' });
+    return;
   }
 
-  let ticker: string
+  let ticker: string;
   try {
-    ticker = await resolveTicker(rawTicker)
+    ticker = await resolveTicker(rawTicker);
   } catch (e: any) {
-    return res.status(400).json({ error: e.message })
+    res.status(400).json({ error: e.message });
+    return;
   }
 
-  const config = loadConfig()
+  const config = loadConfig();
   if (!config.apiKey) {
-    return res.status(400).json({ error: '未配置 API Key，请在设置页面配置后再试' })
+    res.status(400).json({ error: '未配置 API Key，请在设置页面配置后再试' });
+    return;
   }
 
-  res.setHeader('Content-Type', 'text/event-stream')
-  res.setHeader('Cache-Control', 'no-cache')
-  res.setHeader('Connection', 'keep-alive')
-  res.setHeader('X-Accel-Buffering', 'no')
-
-  const sendEvent = (type: string, data: any) => {
-    res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`)
-    if (typeof (res as any).flush === 'function') (res as any).flush()
-  }
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
 
   try {
     const { finalState, signal } = await runPipeline(
-      ticker, tradeDate,
+      ticker,
+      tradeDate,
       {
         apiKey: config.apiKey,
         baseUrl: config.baseUrl,
@@ -56,28 +92,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         analysts: config.analysts,
         maxDebateRounds: config.maxDebateRounds,
       },
-      (stage, data) => { sendEvent('stage', { stage, ...data }) },
-    )
+      createStageCallback(res),
+    );
 
-    sendEvent('complete', { decision: finalState.finalTradeDecision, signal })
+    sendEvent(res, 'complete', {
+      decision: finalState.finalTradeDecision,
+      signal,
+    });
 
-    const reportParts = [
-      finalState.marketReport && `## 市场分析\n\n${finalState.marketReport}`,
-      finalState.sentimentReport && `## 情绪分析\n\n${finalState.sentimentReport}`,
-      finalState.newsReport && `## 新闻分析\n\n${finalState.newsReport}`,
-      finalState.fundamentalsReport && `## 基本面分析\n\n${finalState.fundamentalsReport}`,
-      finalState.policyReport && `## 政策分析\n\n${finalState.policyReport}`,
-      finalState.hotMoneyReport && `## 资金分析\n\n${finalState.hotMoneyReport}`,
-      finalState.lockupReport && `## 解禁分析\n\n${finalState.lockupReport}`,
-      finalState.finalTradeDecision && `## 最终决策\n\n${finalState.finalTradeDecision}`,
-    ].filter(Boolean).join('\n\n---\n\n')
+    const parts: string[] = [];
+    if (finalState.marketReport) parts.push('## 市场分析\n\n' + finalState.marketReport);
+    if (finalState.sentimentReport) parts.push('## 情绪分析\n\n' + finalState.sentimentReport);
+    if (finalState.newsReport) parts.push('## 新闻分析\n\n' + finalState.newsReport);
+    if (finalState.fundamentalsReport) parts.push('## 基本面分析\n\n' + finalState.fundamentalsReport);
+    if (finalState.policyReport) parts.push('## 政策分析\n\n' + finalState.policyReport);
+    if (finalState.hotMoneyReport) parts.push('## 资金分析\n\n' + finalState.hotMoneyReport);
+    if (finalState.lockupReport) parts.push('## 解禁分析\n\n' + finalState.lockupReport);
+    if (finalState.finalTradeDecision) parts.push('## 最终决策\n\n' + finalState.finalTradeDecision);
+    const reportParts = parts.join('\n\n---\n\n');
 
-    sendEvent('report', { content: reportParts })
-    sendEvent('done', {})
-
+    sendEvent(res, 'report', { content: reportParts });
+    sendEvent(res, 'done', {});
   } catch (e: any) {
-    sendEvent('error', { message: e.message })
+    sendEvent(res, 'error', { message: e.message });
   }
 
-  res.end()
+  res.end();
 }
