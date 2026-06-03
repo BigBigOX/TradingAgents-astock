@@ -42,6 +42,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const sendEvent = (type: string, data: any) => {
     res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`)
+    if (typeof (res as any).flush === 'function') (res as any).flush()
   }
 
   try {
