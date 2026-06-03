@@ -158,7 +158,10 @@ export async function invokeLLM(
     };
   }
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
   const resp = await fetch(url, {
+    signal: controller.signal,
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -166,6 +169,7 @@ export async function invokeLLM(
     },
     body: JSON.stringify(body),
   });
+  clearTimeout(timeoutId);
 
   if (!resp.ok) {
     const errText = await resp.text();
