@@ -75,11 +75,11 @@ export function Sidebar() {
               {history.map((entry, i) => (
                 <Link
                   key={i}
-                  href={"/analysis/" + encodeURIComponent(entry.ticker) + "?date=" + entry.date}
+                  href={"/analysis/" + encodeURIComponent(entry.ticker) + "?date=" + (entry.tradeDate || entry.date)}
                   className="block py-2 px-3 text-sm text-[#ccc] bg-[#161616] rounded-lg hover:border-[#ff5a1f] border border-transparent transition-colors"
                 >
                   <span className="font-medium">{entry.ticker}</span>
-                  <span className="text-[#555] text-xs ml-2">{entry.date}</span>
+                  <span className="text-[#555] text-xs ml-2">{(entry.tradeDate || entry.date)}</span>
                   {entry.signal && (
                     <span className="text-[#888] text-xs block truncate mt-0.5">{entry.signal}</span>
                   )}
@@ -90,7 +90,7 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* 底部 - 固定在底部 */}
+      {/* 底部 - 固定在底�?*/}
       <div className="shrink-0 p-4 border-t border-[#1a1a1a]">
         <p className="text-xs text-[#555] text-center">仅供学习研究，不构成投资建议</p>
       </div>

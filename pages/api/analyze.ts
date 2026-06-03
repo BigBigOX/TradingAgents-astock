@@ -1,121 +1,163 @@
-/**
- * POST /api/analyze — 启动分析流程，通过 SSE 流式推送进度
- *
- * 事件类型：
- *   stage          — 阶段状态更新（stage=market|social|... status=running|done）
- *   agent_report   — Agent 分析报告（agent=xxx, content=...）
- *   debate_message — 多空辩论消息（side=bull|bear, round=N, content=...）
- *   risk_message   — 风险评估消息（side=aggressive|conservative|neutral, round=N, content=...）
- *   complete       — 分析完成（signal, rating, decision）
- *   report         — 完整报告文本
- *   done           — 所有推送结束
- *   error          — 错误信息
+﻿/**
+ * POST /api/analyze - 启动后台分析任务，持久化到 PostgreSQL
+ * GET  /api/analyze?id=xxx - 轮询获取任务状态
  */
 
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { loadConfig } from '../../src/data/config'
 import { resolveTicker } from '../../src/data/utils'
 import { runPipeline } from '../../src/pipeline'
+import {
+  genTaskId, createTask, updateProgress, completeTask, failTask,
+  getTask, findCached, cleanOldTasks,
+} from '../../src/data/db'
 
-export const config = {
-  api: {
-    bodyParser: true,
-  },
-}
+export const config = { api: { bodyParser: true } }
 
-function sendEvent(res: NextApiResponse, type: string, data: any) {
-  const payload = JSON.stringify({ type, ...data });
-  res.write('data: ' + payload + '\n\n');
-  if (typeof (res as any).flush === 'function') (res as any).flush();
-}
-
-function createStageCallback(res: NextApiResponse) {
-  return (stage: string, data: any) => {
-    if (stage === 'analyst' && data.type) {
-      sendEvent(res, 'stage', { stage: data.type, status: data.status });
-      return;
-    }
-    if (stage === 'agent_report' || stage === 'debate_message' || stage === 'risk_message') {
-      sendEvent(res, stage, data);
-      return;
-    }
-    if (stage === 'complete') {
-      sendEvent(res, 'complete', data);
-      return;
-    }
-    if (data.status === 'running' || data.status === 'done') {
-      sendEvent(res, 'stage', { stage, status: data.status });
-    }
-  };
-}
+// 内存进度缓存：taskId -> progress
+const progressCache: Record<string, any> = {}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const query = req.query || {}
+  const taskId = query.id as string | undefined
+
+  // GET 轮询任务状态
+  if (req.method === 'GET' && taskId) {
+    // 先查内存
+    if (progressCache[taskId]) {
+      res.status(200).json(progressCache[taskId])
+      return
+    }
+    // 再查数据库
+    const t = await getTask(taskId)
+    if (!t) { res.status(404).json({ error: '任务不存在' }); return }
+    const result = {
+      status: t.status,
+      progress: t.progress_json ? JSON.parse(t.progress_json) : {},
+      signal: t.signal || null,
+      report: t.report || '',
+      error: t.error_message || null,
+      done: t.status === 'done',
+      ticker: t.ticker,
+      tradeDate: t.trade_date,
+    }
+    res.status(200).json(result)
+    return
+  }
+
   if (req.method !== 'POST') {
-    res.status(405).json({ error: '仅支持 POST' });
-    return;
+    res.status(405).json({ error: '仅支持 POST' })
+    return
   }
 
-  const { ticker: rawTicker, date: tradeDate } = req.body;
-  if (!rawTicker || !tradeDate) {
-    res.status(400).json({ error: '缺少 ticker 或 date 参数' });
-    return;
+  const { ticker: raw, date: tradeDate } = req.body
+  if (!raw || !tradeDate) {
+    res.status(400).json({ error: '缺少参数' })
+    return
   }
 
-  let ticker: string;
-  try {
-    ticker = await resolveTicker(rawTicker);
-  } catch (e: any) {
-    res.status(400).json({ error: e.message });
-    return;
+  let ticker: string
+  try { ticker = await resolveTicker(raw) } catch (e: any) {
+    res.status(400).json({ error: e.message })
+    return
   }
 
-  const config = loadConfig();
-  if (!config.apiKey) {
-    res.status(400).json({ error: '未配置 API Key，请在设置页面配置后再试' });
-    return;
+  const cfg = loadConfig()
+  if (!cfg.apiKey) {
+    res.status(400).json({ error: '未配置 API Key' })
+    return
   }
 
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-
-  try {
-    const { finalState, signal } = await runPipeline(
-      ticker,
-      tradeDate,
-      {
-        apiKey: config.apiKey,
-        baseUrl: config.baseUrl,
-        quickModel: config.quickModel,
-        deepModel: config.deepModel,
-        analysts: config.analysts,
-        maxDebateRounds: config.maxDebateRounds,
-      },
-      createStageCallback(res),
-    );
-
-    sendEvent(res, 'complete', {
-      decision: finalState.finalTradeDecision,
-      signal,
-    });
-
-    const parts: string[] = [];
-    if (finalState.marketReport) parts.push('## 市场分析\n\n' + finalState.marketReport);
-    if (finalState.sentimentReport) parts.push('## 情绪分析\n\n' + finalState.sentimentReport);
-    if (finalState.newsReport) parts.push('## 新闻分析\n\n' + finalState.newsReport);
-    if (finalState.fundamentalsReport) parts.push('## 基本面分析\n\n' + finalState.fundamentalsReport);
-    if (finalState.policyReport) parts.push('## 政策分析\n\n' + finalState.policyReport);
-    if (finalState.hotMoneyReport) parts.push('## 资金分析\n\n' + finalState.hotMoneyReport);
-    if (finalState.lockupReport) parts.push('## 解禁分析\n\n' + finalState.lockupReport);
-    if (finalState.finalTradeDecision) parts.push('## 最终决策\n\n' + finalState.finalTradeDecision);
-    const reportParts = parts.join('\n\n---\n\n');
-
-    sendEvent(res, 'report', { content: reportParts });
-    sendEvent(res, 'done', {});
-  } catch (e: any) {
-    sendEvent(res, 'error', { message: e.message });
+  // 检查数据库缓存（3天内）
+  const cached = await findCached(ticker, tradeDate)
+  if (cached) {
+    res.status(200).json({
+      taskId: null, cached: true,
+      signal: cached.signal || null,
+      report: cached.report || '',
+      progress: cached.progress_json ? JSON.parse(cached.progress_json) : {},
+      status: 'done', done: true,
+      ticker, tradeDate,
+    })
+    return
   }
 
-  res.end();
+  const id = genTaskId()
+
+  // 初始化内存进度
+  const progress: any = {
+    status: 'running', stages: {}, messages: [],
+    signal: null, report: '', error: null, done: false,
+    ticker, tradeDate,
+  }
+  progressCache[id] = progress
+
+  await createTask(id, ticker, raw === ticker ? '' : raw, tradeDate)
+
+  let dbDirty = false
+  let dbTimer: any = null
+
+  const scheduleDbSave = () => {
+    if (dbDirty) return
+    dbDirty = true
+    dbTimer = setTimeout(() => {
+      dbDirty = false
+      updateProgress(id, { stages: progress.stages, messages: progress.messages }).catch(() => {})
+    }, 2000)
+  }
+
+  // 后台异步分析
+  runPipeline(ticker, tradeDate, {
+    apiKey: cfg.apiKey, baseUrl: cfg.baseUrl,
+    quickModel: cfg.quickModel, deepModel: cfg.deepModel,
+    analysts: cfg.analysts, maxDebateRounds: cfg.maxDebateRounds,
+  }, (stage: string, data: any) => {
+    if (stage === 'analyst' && data.type) {
+      progress.stages[data.type] = { status: data.status }
+      if (data.status === 'done') scheduleDbSave()
+      return
+    }
+    if (stage === 'agent_report') {
+      progress.messages.push({ id: data.agent + '_' + Date.now(), agent: data.agent, content: data.content })
+      progress.stages[data.agent] = { status: 'done' }
+      scheduleDbSave()
+      return
+    }
+    if (stage === 'debate_message') {
+      progress.messages.push({ id: 'debate_' + data.side + '_' + data.round, agent: 'debate', side: data.side, content: data.content, round: data.round })
+      scheduleDbSave()
+      return
+    }
+    if (stage === 'risk_message') {
+      progress.messages.push({ id: 'risk_' + data.side + '_' + data.round, agent: 'risk', side: data.side, content: data.content, round: data.round })
+      scheduleDbSave()
+      return
+    }
+    if (data.status === 'running' || data.status === 'done') {
+      progress.stages[stage] = { status: data.status }
+      if (data.status === 'done') scheduleDbSave()
+    }
+  }).then(async ({ finalState, signal }: any) => {
+    if (dbTimer) clearTimeout(dbTimer)
+    const parts: string[] = []
+    if (finalState.marketReport) parts.push('## 市场分析\n\n' + finalState.marketReport)
+    if (finalState.sentimentReport) parts.push('## 情绪分析\n\n' + finalState.sentimentReport)
+    if (finalState.newsReport) parts.push('## 新闻分析\n\n' + finalState.newsReport)
+    if (finalState.fundamentalsReport) parts.push('## 基本面分析\n\n' + finalState.fundamentalsReport)
+    if (finalState.policyReport) parts.push('## 政策分析\n\n' + finalState.policyReport)
+    if (finalState.hotMoneyReport) parts.push('## 资金分析\n\n' + finalState.hotMoneyReport)
+    if (finalState.lockupReport) parts.push('## 解禁分析\n\n' + finalState.lockupReport)
+    if (finalState.finalTradeDecision) parts.push('## 最终决策\n\n' + finalState.finalTradeDecision)
+    const report = parts.join('\n\n---\n\n')
+    progress.status = 'done'; progress.done = true; progress.signal = { text: signal }; progress.report = report
+    delete progressCache[id]
+    await completeTask(id, signal, report, ticker, tradeDate)
+    cleanOldTasks().catch(() => {})
+  }).catch(async (e: any) => {
+    progress.status = 'error'; progress.error = e.message
+    delete progressCache[id]
+    await failTask(id, e.message)
+  })
+
+  res.status(200).json({ taskId: id, cached: false, ticker, tradeDate })
 }
