@@ -38,17 +38,6 @@ export async function traderNode(
   ]
 
   const resp = await invokeLLM(quickModel, messages, apiKey, baseUrl, {
-    responseSchema: {
-      type: 'object',
-      properties: {
-        action: { type: 'string', enum: ['Buy', 'Hold', 'Sell'] },
-        reasoning: { type: 'string' },
-        entryPrice: { type: 'number' },
-        stopLoss: { type: 'number' },
-        positionSizing: { type: 'string' },
-      },
-      required: ['action', 'reasoning'],
-    },
   })
 
   try {

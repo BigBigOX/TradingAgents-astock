@@ -42,15 +42,6 @@ export async function researchManagerNode(
   ]
 
   const resp = await invokeLLM(deepModel, messages, apiKey, baseUrl, {
-    responseSchema: {
-      type: 'object',
-      properties: {
-        recommendation: { type: 'string', enum: ['Buy', 'Overweight', 'Hold', 'Underweight', 'Sell'] },
-        rationale: { type: 'string' },
-        strategicActions: { type: 'string' },
-      },
-      required: ['recommendation', 'rationale', 'strategicActions'],
-    },
   })
 
   let plan: ResearchPlan

@@ -46,17 +46,6 @@ export async function portfolioManagerNode(
   ]
 
   const resp = await invokeLLM(deepModel, messages, apiKey, baseUrl, {
-    responseSchema: {
-      type: 'object',
-      properties: {
-        rating: { type: 'string', enum: ['Buy', 'Overweight', 'Hold', 'Underweight', 'Sell'] },
-        executiveSummary: { type: 'string' },
-        investmentThesis: { type: 'string' },
-        priceTarget: { type: 'number' },
-        timeHorizon: { type: 'string' },
-      },
-      required: ['rating', 'executiveSummary', 'investmentThesis'],
-    },
   })
 
   try {
