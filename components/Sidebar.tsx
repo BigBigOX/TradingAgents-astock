@@ -5,14 +5,24 @@ import Link from 'next/link'
 import { Settings } from './Settings'
 
 interface HistoryEntry {
-  path: string
   ticker: string
   date: string
+  signal?: string
 }
 
 export function Sidebar() {
   const [showSettings, setShowSettings] = useState(false)
   const [history, setHistory] = useState<HistoryEntry[]>([])
+
+  useEffect(() => {
+    fetch('/api/history')
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) setHistory(data)
+        else if (data.history && Array.isArray(data.history)) setHistory(data.history)
+      })
+      .catch(() => {})
+  }, [])
 
   return (
     <aside className="fixed left-0 top-0 w-80 h-full bg-[#0f0f0f] border-r border-[#1a1a1a] overflow-y-auto z-50">
@@ -26,7 +36,7 @@ export function Sidebar() {
         <div className="text-sm text-[#888] mt-1">A股多Agent投研系统</div>
       </div>
 
-      {/* 分析输入 */}
+      {/* 新建分析按钮 */}
       <div className="p-4">
         <Link
           href="/"
@@ -36,7 +46,7 @@ export function Sidebar() {
         </Link>
       </div>
 
-      {/* 设置按钮 */}
+      {/* 模型设置按钮 */}
       <div className="px-4 mb-4">
         <button
           onClick={() => setShowSettings(!showSettings)}
@@ -59,19 +69,25 @@ export function Sidebar() {
         {history.length === 0 ? (
           <p className="text-xs text-[#555]">暂无历史记录</p>
         ) : (
-          history.map((entry, i) => (
-            <Link
-              key={i}
-              href={`/analysis/${entry.ticker}?date=${entry.date}`}
-              className="block py-2 px-3 text-sm text-[#ccc] bg-[#161616] rounded-lg mb-1 hover:border-[#ff5a1f] border border-transparent transition-colors"
-            >
-              {entry.ticker} · {entry.date}
-            </Link>
-          ))
+          <div className="space-y-1">
+            {history.map((entry, i) => (
+              <Link
+                key={i}
+                href={`/analysis/${encodeURIComponent(entry.ticker)}?date=${entry.date}`}
+                className="block py-2 px-3 text-sm text-[#ccc] bg-[#161616] rounded-lg hover:border-[#ff5a1f] border border-transparent transition-colors"
+              >
+                <span className="font-medium">{entry.ticker}</span>
+                <span className="text-[#555] text-xs ml-2">{entry.date}</span>
+                {entry.signal && (
+                  <span className="text-[#888] text-xs block truncate mt-0.5">{entry.signal}</span>
+                )}
+              </Link>
+            ))}
+          </div>
         )}
       </div>
 
-      {/* 页脚 */}
+      {/* 底部 */}
       <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-[#1a1a1a]">
         <p className="text-xs text-[#555] text-center">仅供学习研究，不构成投资建议</p>
       </div>
