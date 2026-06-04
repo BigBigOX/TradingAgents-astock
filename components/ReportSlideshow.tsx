@@ -242,9 +242,44 @@ export default function ReportSlideshow(props: SlideshowProps) {
   const socialContent = getFromMsg(messages, "social");
   const hotMoneyContent = getFromMsg(messages, "hot_money");
 
-  const kpiItems: any[] = [];
-  const actionItems: any[] = [];
-  const coveragePct = 100;
+  const kpiItems: any[] = [
+  { label: 'Close', value: extractReg(marketContent, /(?:close|price)[:\\s]*([0-9.]+)/) || '--' },
+  { label: 'Change', value: extractReg(marketContent, /(?:change|chg)[:\\s]*([+-]?[0-9.]+%)/) || '--' },
+  { label: 'Turnover', value: extractReg(marketContent, /(?:turnover|rate)[:\\s]*([0-9.]+%)/) || '--' },
+  { label: 'Volume', value: extractReg(hotMoneyContent, /(?:volume|vol)[:\\s]*([0-9.]+[kKmMbB]?)/) || extractReg(marketContent, /(?:volume|vol)[:\\s]*([0-9.]+[kKmMbB]?)/) || '--' },
+];
+  const actionItems: any[] = (function() {
+  const r = signal?.rating || "hold";
+  const b = r === "strong_buy" || r === "buy";
+  const be = r === "sell" || r === "strong_sell";
+  if (b) {
+    return [
+      { role: "Holder", emoji: "H", action: "Hold with stop-loss", color: "#00E676" },
+      { role: "Watcher", emoji: "W", action: "Small test position on dips", color: "#FFD740" },
+      { role: "Bottom-fisher", emoji: "B", action: "Add after support confirmed", color: "#FF6B00" },
+    ];
+  } else if (be) {
+    return [
+      { role: "Holder", emoji: "H", action: "Reduce position, control risk", color: "#FF5252" },
+      { role: "Watcher", emoji: "W", action: "Wait for stabilization signal", color: "#FFD740" },
+      { role: "Bottom-fisher", emoji: "B", action: "Avoid blind bottom-fishing", color: "#888" },
+    ];
+  } else {
+    return [
+      { role: "Holder", emoji: "H", action: "Hold cautiously, watch key levels", color: "#FFD740" },
+      { role: "Watcher", emoji: "W", action: "Wait for clear direction", color: "#FFD740" },
+      { role: "Bottom-fisher", emoji: "B", action: "Small trial position only", color: "#FF6B00" },
+    ];
+  }
+})();
+  const coverageDims = [
+  { key: "market", score: extractScore(marketContent) },
+  { key: "social", score: extractScore(socialContent) },
+  { key: "hot_money", score: extractScore(hotMoneyContent) },
+  { key: "fundamentals", score: extractScore(getFromMsg(messages, "fundamentals")) },
+  { key: "policy", score: extractScore(getFromMsg(messages, "policy")) },
+];
+const coveragePct = coverageDims.filter(function(d) { return d.score !== null; }).length / coverageDims.length * 100;
 
   const handleTouchStart = (e: React.TouchEvent) => { touchX.current = e.touches[0].clientX; };
   const handleTouchEnd = (e: React.TouchEvent) => {

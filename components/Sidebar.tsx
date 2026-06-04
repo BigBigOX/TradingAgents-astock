@@ -8,6 +8,7 @@ interface HistoryEntry {
   ticker: string
   date: string
   signal?: string
+  status?: string
 }
 
 export function Sidebar() {
@@ -82,6 +83,9 @@ export function Sidebar() {
                   <span className="text-[#555] text-xs ml-2">{entry.date}</span>
                   {entry.signal && (
                     <span className="text-[#888] text-xs block truncate mt-0.5">{entry.signal}</span>
+                  )}
+                  {entry.status === 'recycled' && (
+                    <span className="text-[#555] text-[10px] block mt-0.5">已归档</span>
                   )}
                 </Link>
               ))}

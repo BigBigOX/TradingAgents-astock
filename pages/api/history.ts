@@ -13,6 +13,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   res.status(200).json({
     history: history.map(h => ({
+      status: h.status,
       id: h.id,
       ticker: h.ticker,
       tickerName: h.ticker_name,
