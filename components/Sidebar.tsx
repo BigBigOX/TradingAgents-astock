@@ -66,8 +66,8 @@ export function Sidebar() {
                 <Link key={i}
                   href={"/analysis/" + encodeURIComponent(entry.ticker) + "?date=" + entry.tradeDate + (entry.id ? "&taskId=" + entry.id : "")}
                   className="block py-2 px-3 text-sm text-[#ccc] bg-[#161616] rounded-lg hover:border-[#ff5a1f] border border-transparent transition-colors">
-                  <span className="font-medium">{entry.ticker}</span>
-                  {entry.tickerName && <span className="text-[#888] text-xs ml-1.5">{entry.tickerName}</span>}
+                  <span className="font-medium">{entry.tickerName || entry.ticker}</span>
+                  {entry.tickerName && entry.tickerName !== entry.ticker && <span className="text-[#888] text-xs ml-1.5">{entry.ticker}</span>}
                   <span className="text-[#555] text-xs ml-2">{entry.tradeDate}</span>
                   {entry.signal && (
                     <span className="text-[#888] text-xs truncate mt-0.5 block" style={{maxWidth: "280px"}}>{entry.signal}</span>

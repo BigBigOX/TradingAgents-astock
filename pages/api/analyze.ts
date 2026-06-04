@@ -4,8 +4,9 @@
  */
 
 import type { NextApiRequest, NextApiResponse } from 'next'
+import { Pool } from 'pg'
 import { loadConfig } from '../../src/data/config'
-import { resolveTicker } from '../../src/data/utils'
+import { resolveTicker, getStockName } from '../../src/data/utils'
 import { runPipeline } from '../../src/pipeline'
 import {
   genTaskId, createTask, updateProgress, completeTask, failTask,
@@ -15,9 +16,14 @@ import {
 export const config = { api: { bodyParser: true } }
 
 // 内存进度缓存：taskId -> progress
+const cleanupPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
 const progressCache: Record<string, any> = {}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // 后台清理测试数据
+  try { await cleanupPool.query("DELETE FROM analysis_tasks WHERE status != 'done' AND created_at < NOW() - INTERVAL '1 hour'"); } catch(e) {}
+
+  // 后台清理，不阻塞主流程
   forceCleanup().catch(() => {});
 
   const query = req.query || {}
@@ -94,7 +100,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   progressCache[id] = progress
 
-  await createTask(id, ticker, raw === ticker ? '' : raw, tradeDate)
+  const stockName = raw === ticker ? await getStockName(ticker).catch(() => ticker) : raw;
+  await createTask(id, ticker, stockName || ticker, tradeDate)
 
   let dbDirty = false
   let dbTimer: any = null
