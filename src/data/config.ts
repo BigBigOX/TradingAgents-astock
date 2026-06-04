@@ -1,5 +1,6 @@
-﻿/**
+/**
  * 配置管理 + 持久化（AES 加密）
+ * 存储位置: ~/.tradingagents/config.json
  */
 
 import * as fs from 'fs'
@@ -13,7 +14,7 @@ export interface AppConfig {
   apiKey: string
   baseUrl: string
   quickModel: string
-/** 获取机器级稳定密钥（基于主机名 + 机器 ID，不依赖外部文件）*/
+  deepModel: string
   outputLanguage: string
   analysts: string[]
   maxDebateRounds: number
@@ -28,7 +29,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   deepModel: 'deepseek-v4-pro',
   outputLanguage: 'Chinese',
   analysts: ['market', 'social', 'news', 'fundamentals', 'policy', 'hot_money', 'lockup'],
-  maxDebateRounds: 0,
+  maxDebateRounds: 1,
 }
 
 /** 配置文件路径 */
@@ -50,6 +51,8 @@ const ALGORITHM = 'aes-256-gcm'
 const KEY_LENGTH = 32
 const IV_LENGTH = 16
 const TAG_LENGTH = 16
+
+/** 获取机器级稳定密钥（基于主机名 + 机器 ID，不依赖外部文件） */
 function getMachineKey(): Buffer {
   const hostname = os.hostname()
   const platform = os.platform()
@@ -70,7 +73,7 @@ function encrypt(plaintext: string): string {
   return iv.toString('hex') + ':' + tag + ':' + encrypted
 }
 
-/** 读取配置（自动解密apiKey）*/
+/** 解密密文 */
 function decrypt(ciphertext: string): string {
   if (!ciphertext) return ''
   try {
@@ -92,7 +95,7 @@ function decrypt(ciphertext: string): string {
 
 // ---- 配置读写 ----
 
-/** 读取配置（自动解密apiKey）*/
+/** 读取配置（自动解密 apiKey） */
 export function loadConfig(): AppConfig {
   const configPath = getConfigPath()
   try {
@@ -107,11 +110,13 @@ export function loadConfig(): AppConfig {
       return { ...DEFAULT_CONFIG, ...parsed }
     }
   } catch {
-    // 读取失败时返回默�?  }
+    // 读取失败时返回默认
+  }
   return { ...DEFAULT_CONFIG }
 }
 
-/** 保存配置（自动加密apiKey）*/
+/** 保存配置（自动加密 apiKey） */
+export function saveConfig(config: AppConfig): void {
   ensureConfigDir()
   const configPath = getConfigPath()
   const toSave = { ...config }
