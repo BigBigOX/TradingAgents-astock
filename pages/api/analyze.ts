@@ -9,7 +9,7 @@ import { resolveTicker } from '../../src/data/utils'
 import { runPipeline } from '../../src/pipeline'
 import {
   genTaskId, createTask, updateProgress, completeTask, failTask,
-  getTask, findCached, cleanOldTasks,
+  getTask, findCached, cleanOldTasks, forceCleanup,
 } from '../../src/data/db'
 
 export const config = { api: { bodyParser: true } }
@@ -18,6 +18,8 @@ export const config = { api: { bodyParser: true } }
 const progressCache: Record<string, any> = {}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  forceCleanup().catch(() => {});
+
   const query = req.query || {}
   const taskId = query.id as string | undefined
 
