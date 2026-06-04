@@ -66,6 +66,7 @@ export default function AnalysisPage({ params, searchParams }: Props) {
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [showDebug, setShowDebug] = useState(false);
   const [showReports, setShowReports] = useState(false);
   const [taskId, setTaskId] = useState<string | null>(existingTaskId || null);
   const [status, setStatus] = useState<string>(existingTaskId ? 'polling' : 'idle');
@@ -244,7 +245,7 @@ export default function AnalysisPage({ params, searchParams }: Props) {
 
 
       {/* 幻灯片演示 */}
-      {done && signal && messages.length > 0 && (
+{showDebug && (
         <ReportSlideshow
           ticker={ticker}
           tickerName={extractTickerName(messages, ticker)}
@@ -257,15 +258,20 @@ export default function AnalysisPage({ params, searchParams }: Props) {
       {/* Agent 推理过程 */}
       {messages.length > 0 && (
         <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl overflow-hidden">
+          <button onClick={()=>setShowDebug(!showDebug)} className="w-full flex items-center gap-2 px-4 py-3 hover:bg-[#1a1a1a] text-left transition-colors">
+            <span className="text-xs text-[#888]">{showDebug ? "▼" : "▶"}</span>
+            <span className="text-sm font-medium text-[#f5f1eb]">🧠 Agent推理过程</span>
+            <span className="text-xs text-[#555] ml-1">({messages.length}条)</span>
+          </button>
           <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a2a2a] bg-[#1a1a1a]">
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-[#f5f1eb]">🧠 Agent 推理过程</h2>
+              {/* old header hidden */}
               {!done && <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />}
               <span className="text-xs text-[#555]">（{messages.length} 条）</span>
             </div>
             <div className="flex gap-3">
-              <button onClick={expandAll} className="text-xs text-[#888] hover:text-[#f5f1eb] transition-colors">展开全部</button>
-              <button onClick={collapseAll} className="text-xs text-[#888] hover:text-[#f5f1eb] transition-colors">收起全部</button>
+              {/* expand/collapse hidden */}
+              {/* collapse hidden */}
             </div>
           </div>
           <div className="divide-y divide-[#2a2a2a] max-h-[600px] overflow-y-auto">
@@ -299,7 +305,7 @@ export default function AnalysisPage({ params, searchParams }: Props) {
             <div ref={msgEndRef} />
           </div>
         </div>
-      )}
+        )}
 
 
       {/* 加载中（启动阶段弹跳动画） */}
