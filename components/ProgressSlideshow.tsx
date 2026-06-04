@@ -44,6 +44,10 @@ export default function ProgressSlideshow({ stages, stageDefs, messages, done }:
 
   const runningStage = stageDefs.find(s => stages[s.key]?.status === "running");
   const lastMsg = messages[messages.length - 1];
+  var runningStageObj = stageDefs.find(function(s) { return stages[s.key] && stages[s.key].status === "running"; });
+  var curAgentLabel = runningStageObj ? runningStageObj.label : (done ? "????" : "???...");
+  var curAgentDesc = runningStageObj ? "? " + (stageDefs.indexOf(runningStageObj) + 1) + " / " + stageDefs.length + " ?" : "";
+
 
   return (
     <div className="bg-[#0f0f0f] border border-[#222] rounded-2xl overflow-hidden select-none">

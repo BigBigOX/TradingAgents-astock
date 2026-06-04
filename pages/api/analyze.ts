@@ -86,7 +86,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // 初始化内存进度
   const progress: any = {
-    status: 'running', stages: {}, messages: [],
+    status: 'running', stages: {}, messages: [], currentAgentLabel: '',
     signal: null, report: '', error: null, done: false,
     ticker, tradeDate,
   }
@@ -114,6 +114,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }, (stage: string, data: any) => {
     if (stage === 'analyst' && data.type) {
       progress.stages[data.type] = { status: data.status }
+      if (data.status === 'running') progress.currentAgentLabel = data.type
       if (data.status === 'done') scheduleDbSave()
       return
     }
@@ -150,6 +151,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (finalState.finalTradeDecision) parts.push('## 最终决策\n\n' + finalState.finalTradeDecision)
     const report = parts.join('\n\n---\n\n')
     progress.status = 'done'; progress.done = true; progress.signal = { text: signal }; progress.report = report
+      progress.currentAgentLabel = ''
     delete progressCache[id]
     await completeTask(id, signal, report, ticker, tradeDate)
     cleanOldTasks().catch(() => {})
