@@ -16,12 +16,9 @@ import {
 export const config = { api: { bodyParser: true } }
 
 // 内存进度缓存：taskId -> progress
-const cleanupPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
 const progressCache: Record<string, any> = {}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // 后台清理测试数据
-  try { await cleanupPool.query("DELETE FROM analysis_tasks WHERE status != 'done' AND created_at < NOW() - INTERVAL '1 hour'"); } catch(e) {}
 
   // 后台清理，不阻塞主流程
   forceCleanup().catch(() => {});
