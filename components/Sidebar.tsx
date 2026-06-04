@@ -5,8 +5,10 @@ import Link from 'next/link'
 import { Settings } from './Settings'
 
 interface HistoryEntry {
+  id?: string
   ticker: string
-  date: string
+  tickerName?: string
+  tradeDate: string
   signal?: string
   status?: string
 }
@@ -76,13 +78,14 @@ export function Sidebar() {
               {history.map((entry, i) => (
                 <Link
                   key={i}
-                  href={"/analysis/" + encodeURIComponent(entry.ticker) + "?date=" + entry.date}
+                  href={"/analysis/" + encodeURIComponent(entry.ticker) + "?date=" + entry.tradeDate + (entry.id ? "&taskId=" + entry.id : "")}
                   className="block py-2 px-3 text-sm text-[#ccc] bg-[#161616] rounded-lg hover:border-[#ff5a1f] border border-transparent transition-colors"
                 >
                   <span className="font-medium">{entry.ticker}</span>
-                  <span className="text-[#555] text-xs ml-2">{entry.date}</span>
+                  {entry.tickerName && <span className="text-[#888] text-xs ml-1.5">{entry.tickerName}</span>}
+                  <span className="text-[#555] text-xs ml-2">{entry.tradeDate}</span>
                   {entry.signal && (
-                    <span className="text-[#888] text-xs block truncate mt-0.5">{entry.signal}</span>
+                    <span className="text-[#888] text-xs truncate mt-0.5" style={{maxWidth: "280px", display: "block"}}>{entry.signal}</span>
                   )}
                   {entry.status === 'recycled' && (
                     <span className="text-[#555] text-[10px] block mt-0.5">已归档</span>
