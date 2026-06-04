@@ -45,6 +45,14 @@ const SIDE_NAMES: Record<string, string> = {
   aggressive: '🔥 冒进型', conservative: '🛡️ 保守型', neutral: '⚖️ 中性型',
 };
 
+function extractTickerName(msgs: any[], fallback: string): string {
+  for (const m of msgs) {
+    const match = m.content.match(/(?:股票名称|股票名|名称|name)[：:]+([^\n]+)/i);
+    if (match) return match[1].trim();
+  }
+  return fallback;
+}
+
 export default function AnalysisPage({ params, searchParams }: Props) {
   const router = useRouter();
   const ticker = decodeURIComponent(params.ticker);
@@ -58,6 +66,7 @@ export default function AnalysisPage({ params, searchParams }: Props) {
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [showReports, setShowReports] = useState(false);
   const [taskId, setTaskId] = useState<string | null>(existingTaskId || null);
   const [status, setStatus] = useState<string>(existingTaskId ? 'polling' : 'idle');
   const msgEndRef = useRef<HTMLDivElement>(null);
@@ -238,7 +247,7 @@ export default function AnalysisPage({ params, searchParams }: Props) {
       {done && signal && messages.length > 0 && (
         <ReportSlideshow
           ticker={ticker}
-          tickerName=''
+          tickerName={extractTickerName(messages, ticker)}
           tradeDate={date}
           signal={signal}
           messages={messages}
@@ -311,8 +320,8 @@ export default function AnalysisPage({ params, searchParams }: Props) {
       {/* 完整报告 */}
       {report && (
         <div className="p-6 bg-[#161616] border border-[#2a2a2a] rounded-xl text-sm text-[#ccc] leading-relaxed whitespace-pre-wrap">
-          <h2 className="text-lg font-bold text-[#f5f1eb] mb-4">📄 完整分析报告</h2>
-          {report.split('---').map((section, idx) => (
+          <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-[#f5f1eb]">📄 完整分析报告</h2><button onClick={()=>setShowReports(!showReports)} className="text-xs text-[#888] hover:text-white px-3 py-1 rounded bg-[#2a2a2a]">{showReports?"收起":"查看"}</button></div>
+          {showReports && report.split('---').map((section, idx) => (
             <div key={idx} className="mb-6">{section}</div>
           ))}
         </div>

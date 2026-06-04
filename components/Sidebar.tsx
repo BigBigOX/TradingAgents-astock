@@ -29,7 +29,7 @@ export function Sidebar() {
 
   return (
     <aside className="fixed left-0 top-0 w-80 h-full bg-[#0f0f0f] border-r border-[#1a1a1a] z-50 flex flex-col">
-      {/* Logo - 固定顶部 */}
+      {/* Logo */}
       <div className="text-center py-6 border-b border-[#1a1a1a] shrink-0">
         <div className="text-2xl font-extrabold">
           <span className="text-[#ff5a1f]">Trading</span>
@@ -39,36 +39,23 @@ export function Sidebar() {
         <div className="text-sm text-[#888] mt-1">A股多Agent投研系统</div>
       </div>
 
-      {/* 可滚动内容区 */}
       <div className="flex-1 overflow-y-auto">
-        {/* 新建分析按钮 */}
         <div className="p-4">
-          <Link
-            href="/"
-            className="block w-full py-2 px-4 bg-[#161616] border border-[#2a2a2a] rounded-lg text-center text-[#f5f1eb] hover:border-[#ff5a1f] transition-colors"
-          >
+          <Link href="/"
+            className="block w-full py-2 px-4 bg-[#161616] border border-[#2a2a2a] rounded-lg text-center text-[#f5f1eb] hover:border-[#ff5a1f] transition-colors">
             新建分析
           </Link>
         </div>
 
-        {/* 模型设置按钮 */}
         <div className="px-4 mb-4">
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className="w-full py-2 px-4 bg-[#161616] border border-[#2a2a2a] rounded-lg text-sm text-[#888] hover:border-[#ff5a1f] transition-colors"
-          >
-            {showSettings ? '收起设置' : '模型设置'}
+          <button onClick={() => setShowSettings(!showSettings)}
+            className="w-full py-2 px-4 bg-[#161616] border border-[#2a2a2a] rounded-lg text-sm text-[#888] hover:border-[#ff5a1f] transition-colors">
+            {showSettings ? "收起设置" : "模型设置"}
           </button>
         </div>
 
-        {/* 设置面板 */}
-        {showSettings && (
-          <div className="px-4 mb-4">
-            <Settings />
-          </div>
-        )}
+        {showSettings && <div className="px-4 mb-4"><Settings /></div>}
 
-        {/* 历史记录 */}
         <div className="px-4 pb-24">
           <h3 className="text-sm text-[#888] mb-2 font-semibold">历史记录</h3>
           {history.length === 0 ? (
@@ -76,20 +63,16 @@ export function Sidebar() {
           ) : (
             <div className="space-y-1">
               {history.map((entry, i) => (
-                <Link
-                  key={i}
+                <Link key={i}
                   href={"/analysis/" + encodeURIComponent(entry.ticker) + "?date=" + entry.tradeDate + (entry.id ? "&taskId=" + entry.id : "")}
-                  className="block py-2 px-3 text-sm text-[#ccc] bg-[#161616] rounded-lg hover:border-[#ff5a1f] border border-transparent transition-colors"
-                >
+                  className="block py-2 px-3 text-sm text-[#ccc] bg-[#161616] rounded-lg hover:border-[#ff5a1f] border border-transparent transition-colors">
                   <span className="font-medium">{entry.ticker}</span>
                   {entry.tickerName && <span className="text-[#888] text-xs ml-1.5">{entry.tickerName}</span>}
                   <span className="text-[#555] text-xs ml-2">{entry.tradeDate}</span>
                   {entry.signal && (
-                    <span className="text-[#888] text-xs truncate mt-0.5" style={{maxWidth: "280px", display: "block"}}>{entry.signal}</span>
+                    <span className="text-[#888] text-xs truncate mt-0.5 block" style={{maxWidth: "280px"}}>{entry.signal}</span>
                   )}
-                  {entry.status === 'recycled' && (
-                    <span className="text-[#555] text-[10px] block mt-0.5">已归档</span>
-                  )}
+                  {entry.status === 'recycled' && <span className="text-[#555] text-[10px] block mt-0.5">已归档</span>}
                 </Link>
               ))}
             </div>
@@ -97,7 +80,6 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* 底部 - 固定在底部 */}
       <div className="shrink-0 p-4 border-t border-[#1a1a1a]">
         <p className="text-xs text-[#555] text-center">仅供学习研究，不构成投资建议</p>
       </div>
