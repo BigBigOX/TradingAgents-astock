@@ -86,6 +86,36 @@ function extractKPI(content: string, label: string, pattern: RegExp, unit = ''):
   return { label, value: v || '--', unit, color: isNeg ? '#FF5252' : v ? '#00E676' : '#555' };
 }
 
+/** 获取 A 股市场前缀 */
+function getMarketPrefix(code: string): string {
+  const c = code.trim();
+  if (c.startsWith('6') || c.startsWith('9')) return 'sh';
+  if (c.startsWith('0') || c.startsWith('3')) return 'sz';
+  if (c.startsWith('4') || c.startsWith('8')) return 'bj';
+  return 'sh';
+}
+
+/** 解析腾讯行情返回文本 */
+function parseTencentQuote(raw: string): Record<string, any> | null {
+  try {
+    const match = raw.match(/"([^"]+)"/);
+    if (!match) return null;
+    const vals = match[1].split('~');
+    if (vals.length < 48) return null;
+    return {
+      name: vals[1], price: parseFloat(vals[3]) || 0,
+      lastClose: parseFloat(vals[4]) || 0, open: parseFloat(vals[5]) || 0,
+      volume: parseInt(vals[6]) || 0, turnover: vals[7],
+      high: parseFloat(vals[33]) || 0, low: parseFloat(vals[34]) || 0,
+      changePct: parseFloat(vals[32]) || 0,
+      turnoverPct: parseFloat(vals[38]) || 0,
+      peTtm: parseFloat(vals[39]) || 0, mcapYi: parseFloat(vals[44]) || 0,
+      floatMcapYi: parseFloat(vals[45]) || 0, pb: parseFloat(vals[46]) || 0,
+      limitUp: parseFloat(vals[47]) || 0, limitDown: parseFloat(vals[48]) || 0,
+    };
+  } catch { return null; }
+}
+
 // ---- 主题色 ----
 const THEME = {
   bg: '#0D1117',
@@ -106,10 +136,23 @@ export default function ReportSlideshow({ ticker, tickerName, tradeDate, signal,
   const [fullscreen, setFullscreen] = useState(false);
   const [chartLoaded, setChartLoaded] = useState(false);
   const [animDir, setAnimDir] = useState<'left' | 'right'>('right');
+  const [liveQuote, setLiveQuote] = useState<Record<string, any> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const touchX = useRef(0);
   const chartInstances = useRef<any[]>([]);
   const TOTAL_PAGES = 10;
+
+  // 获取实时行情
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const prefix = getMarketPrefix(ticker);
+    const url = `https://qt.gtimg.cn/q=${prefix}${ticker}`;
+    fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+      .then(r => r.text())
+      .then(parseTencentQuote)
+      .then(q => { if (q) setLiveQuote(q); })
+      .catch(() => {});
+  }, [ticker]);
 
   const marketContent = getFromMsg(messages, 'market');
   const socialContent = getFromMsg(messages, 'social');
@@ -130,12 +173,14 @@ export default function ReportSlideshow({ ticker, tickerName, tradeDate, signal,
   const coverageDims = agentKeys.map(k => ({ key: k, score: extractScore(getFromMsg(messages, k)) }));
   const coveragePct = Math.round(coverageDims.filter(d => d.score !== null).length / coverageDims.length * 100);
 
+  // KPI：优先实时行情数据，其次正则从LLM报告提取
+  const q = liveQuote;
   const kpiItems: { label: string; value: string; unit: string; color?: string }[] = [
-    extractKPI(marketContent, '收盘价', /(?:收盘价|close|price)[：:]\s*([0-9.]+)/),
-    extractKPI(marketContent, '涨跌幅', /(?:涨跌幅|change|chg)[：:]\s*([+-]?[0-9.]+%)/),
-    extractKPI(marketContent, '成交量', /(?:成交量|volume|vol)[：:]\s*([0-9.]+)/, '亿'),
-    extractKPI(marketContent, '换手率', /(?:换手率|turnover)[：:]\s*([0-9.]+%)/),
-    extractKPI(marketContent, '市值', /(?:市值|mcap|market.cap)[：:]\s*([0-9.]+)/, '亿'),
+    { label: '最新价', value: q?.price ? q.price.toFixed(2) : extractKPI(marketContent, '收盘价', /(?:收盘价|close|price)[：:]\s*([0-9.]+)/).value, unit: '元', color: q?.changePct >= 0 ? '#00E676' : q?.changePct < 0 ? '#FF5252' : '#555' },
+    { label: '涨跌幅', value: q?.changePct ? (q.changePct >= 0 ? '+' : '') + q.changePct.toFixed(2) + '%' : extractKPI(marketContent, '涨跌幅', /(?:涨跌幅|change|chg)[：:]\s*([+-]?[0-9.]+%)/).value, unit: '', color: q?.changePct >= 0 ? '#00E676' : '#FF5252' },
+    { label: '成交量', value: q?.volume ? (q.volume / 100000000).toFixed(2) : extractKPI(marketContent, '成交量', /(?:成交量|volume|vol)[：:]\s*([0-9.]+)/).value, unit: '亿', color: '#00E5FF' },
+    { label: '换手率', value: q?.turnoverPct ? q.turnoverPct.toFixed(2) + '%' : extractKPI(marketContent, '换手率', /(?:换手率|turnover)[：:]\s*([0-9.]+%)/).value, unit: '', color: '#FFD740' },
+    { label: '市值', value: q?.mcapYi ? q.mcapYi.toFixed(0) : extractKPI(marketContent, '市值', /(?:市值|mcap|market.cap)[：:]\s*([0-9.]+)/).value, unit: '亿', color: '#FF6B00' },
   ];
 
   const actionItems = isBullish
@@ -302,17 +347,15 @@ export default function ReportSlideshow({ ticker, tickerName, tradeDate, signal,
     else { await document.exitFullscreen(); }
   }, []);
 
-  // ---- 键盘导航 ----
+  // ---- 窗口级键盘导航（无需点击组件即可翻页） ----
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft') { setAnimDir('left'); setCurrent(p => Math.max(0, p - 1)); e.preventDefault(); }
       else if (e.key === 'ArrowRight') { setAnimDir('right'); setCurrent(p => Math.min(TOTAL_PAGES - 1, p + 1)); e.preventDefault(); }
-      else if (e.key === 'f' || e.key === 'F') { toggleFS(); }
+      else if (e.key === 'f' || e.key === 'F') { toggleFS(); e.preventDefault(); }
     };
-    el.addEventListener('keydown', handler);
-    return () => el.removeEventListener('keydown', handler);
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
   }, [toggleFS]);
 
   // ---- 触摸滑动 ----
