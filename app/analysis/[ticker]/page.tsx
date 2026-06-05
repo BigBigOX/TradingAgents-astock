@@ -69,6 +69,7 @@ export default function AnalysisPage({ params, searchParams }: Props) {
   const [showDebug, setShowDebug] = useState(false);
   const [showReports, setShowReports] = useState(false);
   const [taskId, setTaskId] = useState<string | null>(existingTaskId || null);
+  const [tickerName, setTickerName] = useState<string>('');
   const [status, setStatus] = useState<string>(existingTaskId ? 'polling' : 'idle');
   const msgEndRef = useRef<HTMLDivElement>(null);
 
@@ -112,6 +113,7 @@ export default function AnalysisPage({ params, searchParams }: Props) {
     if (data.signal) setSignal(typeof data.signal === 'string' ? { text: data.signal } : data.signal);
     if (data.report) setReport(data.report);
     if (data.error) setError(data.error);
+    if (data.tickerName) setTickerName(data.tickerName);
     if (data.done) setDone(true);
   }, []);
 
@@ -217,7 +219,7 @@ export default function AnalysisPage({ params, searchParams }: Props) {
       {/* 顶部导航 */}
       <div className="flex items-center gap-3 pt-4">
         <button onClick={() => router.push('/')} className="text-[#888] hover:text-[#f5f1eb] text-sm transition-colors">← 返回</button>
-        <h1 className="text-xl font-bold text-[#f5f1eb]">{done ? extractTickerName(messages, ticker) + " " + ticker : ticker}</h1>
+        <h1 className="text-xl font-bold text-[#f5f1eb]">{done && tickerName ? tickerName + " " + ticker : ticker}</h1>
         <span className="text-sm text-[#555]">{date}</span>
         {status === 'polling' && !done && <span className="text-xs px-2 py-0.5 rounded bg-blue-900/30 text-blue-400 border border-blue-800/30">恢复查看</span>}
         {done && <span className="text-xs px-2 py-0.5 rounded bg-green-900/30 text-green-400 border border-green-800/30">已完成</span>}
@@ -245,10 +247,10 @@ export default function AnalysisPage({ params, searchParams }: Props) {
 
 
       {/* 幻灯片演示 */}
-{showDebug && (
+{done && (
         <ReportSlideshow
           ticker={ticker}
-          tickerName={extractTickerName(messages, ticker)}
+          tickerName={tickerName || ticker}
           tradeDate={date}
           signal={signal}
           messages={messages}

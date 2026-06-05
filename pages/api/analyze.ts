@@ -170,5 +170,5 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await failTask(id, e.message)
   })
 
-  res.status(200).json({ taskId: id, cached: false, ticker, tradeDate })
+  res.status(200).json({ taskId: id, cached: false, ticker, tickerName: stockName, tradeDate })
 }
