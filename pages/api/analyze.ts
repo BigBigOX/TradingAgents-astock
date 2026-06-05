@@ -40,6 +40,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         done: p.done || false,
         ticker: p.ticker,
         tradeDate: p.tradeDate,
+        tickerName: p.tickerName || '',
       })
       return
     }
@@ -121,6 +122,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   progressCache[id] = progress
 
     const stockName = raw === ticker ? (await fetchStockNameFromSearch(ticker).catch(() => null) || await getStockName(ticker).catch(() => null) || ticker) : raw;
+  if (stockName && stockName !== ticker) progress.tickerName = stockName;
   await createTask(id, ticker, stockName || ticker, tradeDate)
 
   let dbDirty = false
