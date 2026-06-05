@@ -6,7 +6,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { Pool } from 'pg'
 import { loadConfig } from '../../src/data/config'
-import { resolveTicker, getStockName } from '../../src/data/utils'
+import { resolveTicker, getStockName, fetchStockNameFromSearch } from '../../src/data/utils'
 import { runPipeline } from '../../src/pipeline'
 import {
   genTaskId, createTask, updateProgress, completeTask, failTask,
@@ -100,7 +100,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   progressCache[id] = progress
 
-  const stockName = raw === ticker ? await getStockName(ticker).catch(() => ticker) : raw;
+    const stockName = raw === ticker ? (await fetchStockNameFromSearch(ticker).catch(() => null) || await getStockName(ticker).catch(() => null) || ticker) : raw;
   await createTask(id, ticker, stockName || ticker, tradeDate)
 
   let dbDirty = false

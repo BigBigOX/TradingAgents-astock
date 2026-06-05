@@ -70,3 +70,22 @@ export async function getStockName(code: string): Promise<string> {
 }
 
 export function clearNameCache(): void { nameCodeCache = null; }
+/** 基于搜索API快速获取股票名称（比 buildNameCodeMap 更可靠） */
+export async function fetchStockNameFromSearch(code: string): Promise<string | null> {
+  try {
+    const c = normalizeTicker(code);
+    const resp = await fetch(
+      "https://searchadapter.eastmoney.com/api/suggest/get?input=" + c + "&type=14&token=jlk3j4l2k3j4lk32j4l32kj4l32kj4l3k2j4l32kj4",
+      { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(5000) }
+    );
+    const json = await resp.json();
+    const items = json?.QuotationCodeTable?.Data || [];
+    for (const item of items) {
+      if (String(item.Code) === c && item.Name) return String(item.Name).trim();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
