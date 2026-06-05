@@ -46,15 +46,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // 再查数据库
     const t = await getTask(taskId)
     if (!t) { res.status(404).json({ error: '任务不存在' }); return }
+    let signal = null
+    if (t.signal) {
+      try { signal = JSON.parse(t.signal) } catch { signal = { text: t.signal } }
+    }
     const result = {
       status: t.status,
       progress: t.progress_json ? JSON.parse(t.progress_json) : {},
-      signal: t.signal || null,
+      signal,
       report: t.report || '',
       error: t.error_message || null,
       done: t.status === 'done',
       ticker: t.ticker,
       tradeDate: t.trade_date,
+      tickerName: t.ticker_name,
     }
     res.status(200).json(result)
     return
@@ -89,13 +94,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // 检查数据库缓存（3天内）
   const cached = await findCached(ticker, tradeDate)
   if (cached) {
+    let signal = null
+    if (cached.signal) {
+      try { signal = JSON.parse(cached.signal) } catch { signal = { text: cached.signal } }
+    }
     res.status(200).json({
       taskId: null, cached: true,
-      signal: cached.signal || null,
+      signal,
       report: cached.report || '',
       progress: cached.progress_json ? JSON.parse(cached.progress_json) : {},
       status: 'done', done: true,
       ticker, tradeDate,
+      tickerName: cached.ticker_name,
     })
     return
   }
@@ -169,10 +179,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (finalState.lockupReport) parts.push('## 解禁分析\n\n' + finalState.lockupReport)
     if (finalState.finalTradeDecision) parts.push('## 最终决策\n\n' + finalState.finalTradeDecision)
     const report = parts.join('\n\n---\n\n')
-    progress.status = 'done'; progress.done = true; progress.signal = { text: signal }; progress.report = report
+    const ratingKey = signal === 'Buy' || signal === 'Overweight' ? 'buy'
+      : signal === 'Sell' || signal === 'Underweight' ? 'sell'
+      : 'hold'
+    progress.status = 'done'; progress.done = true; progress.signal = { text: signal, rating: ratingKey }; progress.report = report
       progress.currentAgentLabel = ''
     delete progressCache[id]
-    await completeTask(id, signal, report, ticker, tradeDate)
+    await completeTask(id, JSON.stringify({ text: signal, rating: ratingKey }), report, ticker, tradeDate)
     cleanOldTasks().catch(() => {})
   }).catch(async (e: any) => {
     progress.status = 'error'; progress.error = e.message
