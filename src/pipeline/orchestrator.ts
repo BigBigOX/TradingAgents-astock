@@ -106,19 +106,29 @@ async function runFreshPipeline(
     lockup: (s) => lockupAnalystNode(s, config.apiKey, config.baseUrl, config.quickModel),
   }
 
-  // 1. 运行选中的分析师
-  for (const analystType of analystOrder) {
-    if (!config.analysts.includes(analystType)) continue
-    onStage?.('analyst', { type: analystType, status: 'running' })
-    const update = await analystMap[analystType](state)
+  // 1. 并行运行选中的分析师（互不依赖，各写不同字段）
+  const analystPromises = analystOrder
+    .filter(at => config.analysts.includes(at))
+    .map(async (analystType) => {
+      onStage?.('analyst', { type: analystType, status: 'running' })
+      let update: Partial<AgentState> = {}
+      try {
+        update = await analystMap[analystType](state)
+      } catch (e: any) {
+        onStage?.('analyst', { type: analystType, status: 'error' })
+        return { analystType, update }
+      }
+      onStage?.('analyst', { type: analystType, status: 'done' })
+      return { analystType, update }
+    })
+  const analystResults = await Promise.all(analystPromises)
+  for (const { analystType, update } of analystResults) {
     state = { ...state, ...update }
-    // 推送 agent 分析结果
     const reportKey = analystType + 'Report'
     const reportContent = (update as any)[reportKey]
     if (reportContent) {
       onStage?.('agent_report', { agent: analystType, content: reportContent })
     }
-    onStage?.('analyst', { type: analystType, status: 'done' })
   }
 
   // 保存检查点

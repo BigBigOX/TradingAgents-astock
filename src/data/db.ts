@@ -115,29 +115,41 @@ export async function getHistory(limit = 50): Promise<TaskRecord[]> {
   return r.rows
 }
 
-/** 清理7天前的数据 */
+// ===== 历史清理策略 =====
+// 可见期：done 状态保留 7 天
+// 回收站：7 天后 → recycled，再保留 3 天
+// 清除：10 天后 → 永久删除
 
 /** 强制清理所有测试/失败/过期数据 */
 export async function forceCleanup(): Promise<void> {
   // 删除所有非 done 状态的任务（测试残留）
-  await pool.query("DELETE FROM analysis_tasks WHERE status != 'done' AND created_at < NOW() - INTERVAL '1 hour'");
-  // 删除7天前的所有记录
-  await pool.query("DELETE FROM analysis_tasks WHERE created_at < NOW() - INTERVAL '7 days'");
-  // 标记7天前到3天前的为回收
+  await pool.query("DELETE FROM analysis_tasks WHERE status != 'done' AND status != 'recycled' AND created_at < NOW() - INTERVAL '1 hour'");
+  // 删除 10 天前的所有记录
+  await pool.query("DELETE FROM analysis_tasks WHERE created_at < NOW() - INTERVAL '10 days'");
+  // 标记 7 天前的已完成任务为回收
   await pool.query(
-    "UPDATE analysis_tasks SET status = 'recycled' WHERE status = 'done' AND created_at < NOW() - INTERVAL '3 days'",
+    "UPDATE analysis_tasks SET status = 'recycled' WHERE status = 'done' AND created_at < NOW() - INTERVAL '7 days'",
   );
 }
 
 export async function cleanOldTasks(): Promise<void> {
-  // 7天前已完成任务 → 标记回收
+  // 7 天前已完成任务 → 标记回收
   await pool.query(
     `UPDATE analysis_tasks SET status = 'recycled'
-     WHERE status = 'done' AND created_at < NOW() - INTERVAL '3 days'`,
+     WHERE status = 'done' AND created_at < NOW() - INTERVAL '7 days'`,
   )
-  // 10天前 → 彻底删除
+  // 10 天前 → 彻底删除
   await pool.query(
-    `DELETE FROM analysis_tasks WHERE created_at < NOW() - INTERVAL '5 days'`,
+    `DELETE FROM analysis_tasks WHERE created_at < NOW() - INTERVAL '10 days'`,
+  )
+}
+
+/** 手动删除单条历史记录（移到回收站或直接删除） */
+export async function deleteTask(id: string): Promise<void> {
+  // 先标记为 recycled，走正常回收流程
+  await pool.query(
+    `UPDATE analysis_tasks SET status = 'recycled', updated_at = NOW() WHERE id = $1`,
+    [id],
   )
 }
 

@@ -63,17 +63,33 @@ export function Sidebar() {
           ) : (
             <div className="space-y-1">
               {history.map((entry, i) => (
-                <Link key={i}
-                  href={"/analysis/" + encodeURIComponent(entry.ticker) + "?date=" + entry.tradeDate + (entry.id ? "&taskId=" + entry.id : "")}
-                  className="block py-2 px-3 text-sm text-[#ccc] bg-[#161616] rounded-lg hover:border-[#ff5a1f] border border-transparent transition-colors">
-                  <span className="font-medium">{entry.tickerName || entry.ticker}</span>
-                  {entry.tickerName && entry.tickerName !== entry.ticker && <span className="text-[#888] text-xs ml-1.5">{entry.ticker}</span>}
-                  <span className="text-[#555] text-xs ml-2">{entry.tradeDate}</span>
-                  {entry.signal && (
-                    <span className="text-[#888] text-xs truncate mt-0.5 block" style={{maxWidth: "280px"}}>{entry.signal}</span>
-                  )}
-                  {entry.status === 'recycled' && <span className="text-[#555] text-[10px] block mt-0.5">已归档</span>}
-                </Link>
+                <div key={i} className="group relative flex items-start bg-[#161616] rounded-lg hover:border-[#ff5a1f] border border-transparent transition-colors">
+                  <Link
+                    href={"/analysis/" + encodeURIComponent(entry.ticker) + "?date=" + entry.tradeDate + (entry.id ? "&taskId=" + entry.id : "")}
+                    className="flex-1 py-2 px-3 text-sm text-[#ccc] min-w-0">
+                    <span className="font-medium">{entry.tickerName || entry.ticker}</span>
+                    {entry.tickerName && entry.tickerName !== entry.ticker && <span className="text-[#888] text-xs ml-1.5">{entry.ticker}</span>}
+                    <span className="text-[#555] text-xs ml-2">{entry.tradeDate}</span>
+                    {entry.signal && (
+                      <span className="text-[#888] text-xs truncate mt-0.5 block" style={{maxWidth: "240px"}}>{entry.signal}</span>
+                    )}
+                    {entry.status === 'recycled' && <span className="text-[#555] text-[10px] block mt-0.5">已归档</span>}
+                  </Link>
+                  <button
+                    onClick={async (e) => {
+                      e.preventDefault()
+                      if (!entry.id) return
+                      if (!confirm('确认删除这条分析记录？')) return
+                      try {
+                        await fetch('/api/history?id=' + entry.id, { method: 'DELETE' })
+                        setHistory(prev => prev.filter(h => h.id !== entry.id))
+                      } catch {}
+                    }}
+                    className="shrink-0 px-2 py-2 text-[#555] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                    title="删除">
+                    ✕
+                  </button>
+                </div>
               ))}
             </div>
           )}
