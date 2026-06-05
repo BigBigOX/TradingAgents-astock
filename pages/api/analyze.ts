@@ -28,9 +28,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // GET 轮询任务状态
   if (req.method === 'GET' && taskId) {
-    // 先查内存
+    // 先查内存（归一化为与 DB 一致的嵌套格式）
     if (progressCache[taskId]) {
-      res.status(200).json(progressCache[taskId])
+      const p = progressCache[taskId]
+      res.status(200).json({
+        status: p.status,
+        progress: { stages: p.stages || {}, messages: p.messages || [] },
+        signal: p.signal || null,
+        report: p.report || '',
+        error: p.error || null,
+        done: p.done || false,
+        ticker: p.ticker,
+        tradeDate: p.tradeDate,
+      })
       return
     }
     // 再查数据库
