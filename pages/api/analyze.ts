@@ -67,6 +67,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return
   }
 
+    // 后台清理（在创建任务前执行，只删超过1小时的残留）
+  forceCleanup().catch(() => {});
+
   const cfg = loadConfig()
   if (!cfg.apiKey) {
     res.status(400).json({ error: '未配置 API Key' })

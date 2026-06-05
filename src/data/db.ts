@@ -120,7 +120,7 @@ export async function getHistory(limit = 50): Promise<TaskRecord[]> {
 /** 强制清理所有测试/失败/过期数据 */
 export async function forceCleanup(): Promise<void> {
   // 删除所有非 done 状态的任务（测试残留）
-  await pool.query("DELETE FROM analysis_tasks WHERE status != 'done'");
+  await pool.query("DELETE FROM analysis_tasks WHERE status != 'done' AND created_at < NOW() - INTERVAL '1 hour'");
   // 删除7天前的所有记录
   await pool.query("DELETE FROM analysis_tasks WHERE created_at < NOW() - INTERVAL '7 days'");
   // 标记7天前到3天前的为回收
